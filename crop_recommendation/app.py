@@ -78,15 +78,22 @@ def load_feature_stats():
 feature_stats = load_feature_stats()
 
 
+_state_crop_map_cache = None
+
+
 def load_state_crop_map():
-    """Load state-to-crops mapping used by location/state suggestions."""
+    """Load state-to-crops mapping used by location/state suggestions (cached after first load)."""
+    global _state_crop_map_cache
+    if _state_crop_map_cache is not None:
+        return _state_crop_map_cache
     mapping_path = os.path.join(os.path.dirname(__file__), 'state_to_crops.json')
     try:
         with open(mapping_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            _state_crop_map_cache = json.load(f)
     except Exception as e:
         print(f"Error loading state mapping: {e}")
-        return {}
+        _state_crop_map_cache = {}
+    return _state_crop_map_cache
 
 # Domain overrides for realistic/Indian environment limits (used to broaden dataset percentiles)
 domain_limits = {

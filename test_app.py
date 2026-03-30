@@ -69,6 +69,28 @@ def test_yield_predict():
     # assert "Predicted Yield" in response.text # Commenting out strict text check to avoid fragility
     print("Yield Predict OK")
 
+def test_state_suggest():
+    print("Testing State Suggest (/crop/state-suggest) ...")
+    # Valid state should return 200 with a non-empty crops list
+    response = requests.post(
+        f"{BASE_URL}/crop/state-suggest",
+        json={"state": "Maharashtra"}
+    )
+    assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+    data = response.json()
+    assert "crops" in data, "Response missing 'crops' key"
+    assert isinstance(data["crops"], list), "'crops' should be a list"
+    assert len(data["crops"]) > 0, "Expected non-empty crops list for Maharashtra"
+    print("State Suggest (valid state) OK")
+
+    # Missing state should return 400
+    response_bad = requests.post(
+        f"{BASE_URL}/crop/state-suggest",
+        json={}
+    )
+    assert response_bad.status_code == 400, f"Expected 400, got {response_bad.status_code}"
+    print("State Suggest (missing state → 400) OK")
+
 if __name__ == "__main__":
     if not wait_for_server():
         sys.exit(1)
@@ -79,6 +101,7 @@ if __name__ == "__main__":
         test_crop_recommend()
         test_yield_home()
         test_yield_predict()
+        test_state_suggest()
         print("\nAll tests passed!")
     except AssertionError as e:
         print(f"\nTest failed: {e}")

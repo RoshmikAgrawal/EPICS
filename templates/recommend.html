@@ -46,6 +46,7 @@
       <div style="text-align: center; margin-top: 2rem; display:flex; gap:8px;">
         <button type="submit" class="btn" style="flex:1;">Recommend Crop</button>
         <button type="button" id="geo-btn" class="btn btn-geo" style="flex:1;">Use My Location</button>
+        <button type="button" id="live-geo-btn" class="btn btn-live" style="flex:1;">Live Location</button>
       </div>
       <div style="margin-top: 0.75rem;">
         <label for="state-select">Check Recommended Crops by State</label>
@@ -120,6 +121,42 @@ geoBtn.addEventListener('click', function(){
       }
     } catch(err){ alert('Location request failed: '+err); }
   }, function(err){ alert('Geolocation denied or failed: '+err.message); });
+});
+
+// Live location watch
+let watchId = null;
+const liveBtn = document.getElementById('live-geo-btn');
+liveBtn.addEventListener('click', function(){
+  if (watchId !== null){
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+    liveBtn.innerText = 'Live Location';
+    document.getElementById('suggestions-box').innerText = 'Live tracking stopped';
+    return;
+  }
+  if (!navigator.geolocation){ alert('Geolocation not supported'); return; }
+  watchId = navigator.geolocation.watchPosition(async function(pos){
+    const lat = pos.coords.latitude, lon = pos.coords.longitude;
+      try{
+        const res = await fetch('{{ url_for("crop_recommendation_app.location_suggest") }}', {
+          method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({lat,lon})
+        });
+        const data = await res.json();
+        const box = document.getElementById('suggestions-box');
+        if (data.crops && data.crops.length){
+          const txt = 'Suggested crops for ' + (data.state||'your area') + ': ' + data.crops.join(', ') + (data.cached ? ' (cached)' : '');
+          box.innerText = txt;
+          if (data.cached){ box.classList.add('updated'); setTimeout(()=>box.classList.remove('updated'), 2200); } else { box.classList.remove('updated'); }
+        } else if (data.error){
+          box.innerText = 'Location suggestion failed: ' + data.error;
+          box.classList.remove('updated');
+        } else {
+          box.innerText = 'No suggestions for your area';
+          box.classList.remove('updated');
+        }
+        liveBtn.innerText = 'Stop Live';
+      } catch(err){ const box = document.getElementById('suggestions-box'); box.innerText = 'Location request failed: '+err; box.classList.remove('updated'); }
+  }, function(err){ document.getElementById('suggestions-box').innerText = 'Geolocation denied or failed: '+err.message; }, {maximumAge:5000, timeout:10000, enableHighAccuracy:false});
 });
 
 stateSelect.addEventListener('change', async function(){
