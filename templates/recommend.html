@@ -46,10 +46,18 @@
       <div style="text-align: center; margin-top: 2rem; display:flex; gap:8px;">
         <button type="submit" class="btn" style="flex:1;">Recommend Crop</button>
         <button type="button" id="geo-btn" class="btn btn-geo" style="flex:1;">Use My Location</button>
-        <button type="button" id="live-geo-btn" class="btn btn-live" style="flex:1;">Live Location</button>
+      </div>
+      <div style="margin-top: 0.75rem;">
+        <label for="state-select">Check Recommended Crops by State</label>
+        <select id="state-select" style="width:100%; padding:10px; border:1px solid #cccccc; border-radius:4px; font-size:16px; box-sizing:border-box;">
+          <option value="">Select State or Union Territory</option>
+          {% for state in state_options %}
+          <option value="{{ state }}">{{ state }}</option>
+          {% endfor %}
+        </select>
       </div>
     </form>
-    <div id="suggestions-box" style="margin-top:1rem; padding:0.75rem; background:#f3f4f6; border-radius:6px; color:#111827; text-align:center;">Suggestions will appear here when using location features.</div>
+    <div id="suggestions-box" style="margin-top:1rem; padding:0.75rem; background:#f3f4f6; border-radius:6px; color:#111827; text-align:center;">Suggestions will appear here when using location or state selection.</div>
     {% if error %}
     <div
       style="margin-top: 1.5rem; padding: 1rem; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; border-radius: 8px; color: #fca5a5; text-align: center;">
@@ -64,6 +72,7 @@
 const domainLimits = JSON.parse(document.getElementById('domain-limits').textContent || '{}');
 const form = document.getElementById('rec-form');
 const geoBtn = document.getElementById('geo-btn');
+const stateSelect = document.getElementById('state-select');
 
 form.addEventListener('submit', function(e){
   const bad = [];
@@ -113,40 +122,33 @@ geoBtn.addEventListener('click', function(){
   }, function(err){ alert('Geolocation denied or failed: '+err.message); });
 });
 
-// Live location watch
-let watchId = null;
-const liveBtn = document.getElementById('live-geo-btn');
-liveBtn.addEventListener('click', function(){
-  if (watchId !== null){
-    navigator.geolocation.clearWatch(watchId);
-    watchId = null;
-    liveBtn.innerText = 'Live Location';
-    document.getElementById('suggestions-box').innerText = 'Live tracking stopped';
+stateSelect.addEventListener('change', async function(){
+  const state = this.value;
+  if (!state){
+    document.getElementById('suggestions-box').innerText = 'Suggestions will appear here when using location or state selection.';
     return;
   }
-  if (!navigator.geolocation){ alert('Geolocation not supported'); return; }
-  watchId = navigator.geolocation.watchPosition(async function(pos){
-    const lat = pos.coords.latitude, lon = pos.coords.longitude;
-      try{
-        const res = await fetch('{{ url_for("crop_recommendation_app.location_suggest") }}', {
-          method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({lat,lon})
-        });
-        const data = await res.json();
-        const box = document.getElementById('suggestions-box');
-        if (data.crops && data.crops.length){
-          const txt = 'Suggested crops for ' + (data.state||'your area') + ': ' + data.crops.join(', ') + (data.cached ? ' (cached)' : '');
-          box.innerText = txt;
-          if (data.cached){ box.classList.add('updated'); setTimeout(()=>box.classList.remove('updated'), 2200); } else { box.classList.remove('updated'); }
-        } else if (data.error){
-          box.innerText = 'Location suggestion failed: ' + data.error;
-          box.classList.remove('updated');
-        } else {
-          box.innerText = 'No suggestions for your area';
-          box.classList.remove('updated');
-        }
-        liveBtn.innerText = 'Stop Live';
-      } catch(err){ const box = document.getElementById('suggestions-box'); box.innerText = 'Location request failed: '+err; box.classList.remove('updated'); }
-  }, function(err){ document.getElementById('suggestions-box').innerText = 'Geolocation denied or failed: '+err.message; }, {maximumAge:5000, timeout:10000, enableHighAccuracy:false});
+  try {
+    const res = await fetch('{{ url_for("crop_recommendation_app.state_suggest") }}', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({state})
+    });
+    const data = await res.json();
+    const box = document.getElementById('suggestions-box');
+    if (data.crops && data.crops.length){
+      box.innerText = 'Suggested crops for ' + (data.state || state) + ': ' + data.crops.join(', ');
+      box.classList.remove('updated');
+    } else if (data.error) {
+      box.innerText = 'State suggestion failed: ' + data.error;
+      box.classList.remove('updated');
+    } else {
+      box.innerText = 'No suggestions for selected state';
+      box.classList.remove('updated');
+    }
+  } catch (err) {
+    document.getElementById('suggestions-box').innerText = 'State request failed: ' + err;
+  }
 });
 </script>
 

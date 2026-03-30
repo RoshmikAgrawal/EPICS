@@ -77,6 +77,17 @@ def load_feature_stats():
 
 feature_stats = load_feature_stats()
 
+
+def load_state_crop_map():
+    """Load state-to-crops mapping used by location/state suggestions."""
+    mapping_path = os.path.join(os.path.dirname(__file__), 'state_to_crops.json')
+    try:
+        with open(mapping_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error loading state mapping: {e}")
+        return {}
+
 # Domain overrides for realistic/Indian environment limits (used to broaden dataset percentiles)
 domain_limits = {
     # allow higher temperatures frequently seen in India
@@ -234,10 +245,40 @@ def match_state_to_crops(address, state_map):
 @crop_recommendation_app.route('/')
 def home():
     # pass domain limits to template for client-side validation and location UI
+    state_options = sorted(load_state_crop_map().keys(), key=str.lower)
     return render_template('recommend.html', domain_limits={
         'Nitrogen': [0,140], 'Phosphorus': [5,145], 'Potassium': [5,205],
         'Temperature': [5,50], 'Humidity': [10,100], 'pH_Value': [3,10], 'Rainfall': [0,400]
-    })
+    }, state_options=state_options)
+
+
+@crop_recommendation_app.route('/state-suggest', methods=['POST'])
+def state_suggest():
+    """Return mapped crop suggestions for a selected state."""
+    state = None
+    if request.is_json:
+        payload = request.get_json(silent=True) or {}
+        state = payload.get('state')
+    if not state:
+        state = request.form.get('state')
+    if not state:
+        return {"error": "Missing state"}, 400
+
+    state_map = load_state_crop_map()
+    if not state_map:
+        return {"error": "State mapping unavailable"}, 500
+
+    selected_state = str(state).strip()
+    crops = state_map.get(selected_state, [])
+    matched_key = selected_state
+
+    if not crops:
+        _, crops, matched_key, _ = match_state_to_crops({'state': selected_state}, state_map)
+
+    if not crops:
+        return {"state": selected_state, "crops": [], "note": "No mapped crops for this state"}
+
+    return {"state": matched_key, "crops": crops}
 
 
 @crop_recommendation_app.route('/location-suggest', methods=['POST'])
@@ -284,13 +325,7 @@ def location_suggest():
         return {"error": "Location outside India is not supported"}, 400
 
     # load mapping and return suggestions
-    mapping_path = os.path.join(os.path.dirname(__file__), 'state_to_crops.json')
-    try:
-        with open(mapping_path, 'r', encoding='utf-8') as f:
-            state_map = json.load(f)
-    except Exception:
-        print(f"DEBUG: failed to load mapping at {mapping_path}")
-        state_map = {}
+    state_map = load_state_crop_map()
 
     # Use centralized matching helper so tests can import it
     state, crops, matched_key, debug_msgs = match_state_to_crops(address, state_map)
